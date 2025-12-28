@@ -24,10 +24,61 @@ export KSU_VERSION
 sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 cd ..
 
+susfs=true
+if [ $susfs = "true" ]; then
+  # 克隆susfs
+  echo ">>> 克隆补丁仓库..."
+  # Clone/update susfs4ksu
+  if [ -d "susfs4ksu" ]; then
+    cd susfs4ksu
+    git reset --hard HEAD
+    git clean -fdx
+    git pull
+    cd ..
+  else
+    git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.10 --depth=1
+  fi
+    
+    # Clone/update ksun_patch
+  if [ -d "kernel_patches" ]; then
+    cd kernel_patches
+    git reset --hard HEAD
+    git clean -fdx
+    git pull
+    cd ..
+  else
+    git clone https://github.com/TheWildJames/kernel_patches.git --depth=1
+  fi
+  
+  # 应用 SUSFS 相关补丁
+  echo ">>> 应用 SUSFS 及 hook 补丁..."
+  cd ./KernelSU-Next
+  patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
+  cd ..
+  patch -p1 < ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.10.patch || true
 
-# 克隆所需补丁仓库
-echo ">>> 克隆补丁仓库..."
-# Clone/update susfs4ksu
+  # 复制文件系统相关文件
+  cp -r ./susfs4ksu/kernel_patches/fs/* ./fs/
+  cp -r ./susfs4ksu/kernel_patches/include/linux/* ./include/linux/
+
+  # 应用隐藏补丁
+  cp ./kernel_patches/69_hide_stuff.patch ./
+  patch -p1 -F 3 < 69_hide_stuff.patch
+
+  #susfs修复补丁
+  cd ./KernelSU-Next
+  for patch in ../kernel_patches/next/susfs_fix_patches/v2.0.0/*.patch; do
+    [ -f "$patch" ] || continue
+    patch -p1 < "$patch"
+  done
+  cd ..
+else
+  echo "skip susfs"
+fi
+
+# 克隆anykernel3
+echo ">>> 克隆anykernel3..."
+# anykernel3
 if [ -d "kernel-config" ]; then
   cd kernel-config
   git reset --hard HEAD
@@ -37,28 +88,15 @@ if [ -d "kernel-config" ]; then
 else
   git clone https://github.com/micr0o66/kernel-config.git --depth=1
 fi
+cp -r ./kernel-config/anykernel .
 
-# Clone/update ksun_patch
-if [ -d "kernel_patches" ]; then
-  cd kernel_patches
-  git reset --hard HEAD
-  git clean -fdx
-  git pull
-  cd ..
-else
-  git clone https://github.com/TheWildJames/kernel_patches.git --depth=1
-fi
 #拉取baseband
 [ -d "Baseband-guard" ] && rm -rf Baseband-guard
 wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
 
 
-cp -r ./kernel-config/anykernel .
-cp -r ./kernel-config/tracepoint_hook .
-
-
 #由于部分机型的vintf兼容性检测规则，在开启CONFIG_IP6_NF_NAT后开机会出现"您的设备内部出现了问题。请联系您的设备制造商了解详情。"的提示，故添加一个配置修复补丁，在编译内核时隐藏CONFIG_IP6_NF_NAT=y但不影响对应功能编译
-#cp ./tracepoint_hook/config.patch ./
+#cp ./kernel-config/tracepoint_hook/config.patch .
 #patch -p1 -F 3 < config.patch || true
 
 echo ">>> 配置内核选项..."
