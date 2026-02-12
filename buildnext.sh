@@ -18,7 +18,7 @@ ZIMAGE_DIR="$KERNEL_DIR/out/arch/arm64/boot"
 echo ">>> 拉取 kernelsu_next 并设置版本..."
 # 如果 KernelSU 目录存在则删除
 [ -d "KernelSU" ] && rm -rf KernelSU
-curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev_susfs
 cd KernelSU-Next
 KSU_VERSION="$(expr "$(git rev-list --count HEAD)" "+" 10606)"
 export KSU_VERSION
@@ -37,42 +37,20 @@ if [ $susfs = "true" ]; then
     git pull
     cd ..
   else
-    git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.10 --depth=1
+    git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android12-5.10 --depth=1
   fi
-    
-    # Clone/update ksun_patch
-  if [ -d "kernel_patches" ]; then
-    cd kernel_patches
-    git reset --hard HEAD
-    git clean -fdx
-    git pull
-    cd ..
-  else
-    git clone https://github.com/TheWildJames/kernel_patches.git --depth=1
-  fi
-  
+
   # 应用 SUSFS 相关补丁
   echo ">>> 应用 SUSFS 及 hook 补丁..."
-  cd ./KernelSU-Next
-  patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
-  cd ..
-  patch -p1 < ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.10.patch || true
+  patch -p1 < ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || true
 
   # 复制文件系统相关文件
   cp -r ./susfs4ksu/kernel_patches/fs/* ./fs/
   cp -r ./susfs4ksu/kernel_patches/include/linux/* ./include/linux/
 
-  # 应用隐藏补丁
-  cp ./kernel_patches/69_hide_stuff.patch ./
-  patch -p1 -F 3 < 69_hide_stuff.patch
-
   #susfs修复补丁
-  cd ./KernelSU-Next
-  for patch in ../kernel_patches/next/susfs_fix_patches/v2.0.0/*.patch; do
-    [ -f "$patch" ] || continue
-    patch -p1 < "$patch"
-  done
-  cd ..
+  wget https://raw.githubusercontent.com/ESK-Project/esk_builder/refs/heads/main/kernel_patches/pershoot-susfs.patch
+  patch -s -p1 < ./pershoot-susfs.patch
 else
   echo "skip susfs"
 fi
@@ -173,7 +151,7 @@ echo
 make CC="ccache clang" CXX="ccache clang++" LLVM=1 LLVM_IAS=1 O=out $DEFCONFIG
 make CC="ccache clang" CXX="ccache clang++" LLVM=1 LLVM_IAS=1 O=out menuconfig
 make CC='ccache clang' CXX="ccache clang++" LLVM=1 LLVM_IAS=1 O=out $THREAD \
-    LOCALVERSION=-Android13-9-v$(date +%Y%m%d-%H) \
+    LOCALVERSION=-Android12-9-v$(date +%Y%m%d-%H) \
     CONFIG_LOCALVERSION_AUTO=n \
     CONFIG_MEDIATEK_CPUFREQ_DEBUG=m CONFIG_MTK_IPI=m CONFIG_MTK_TINYSYS_MCUPM_SUPPORT=m \
     CONFIG_MTK_MBOX=m CONFIG_RPMSG_MTK=m CONFIG_LTO_CLANG=y CONFIG_LTO_NONE=n \
@@ -200,5 +178,5 @@ cd tmp
 7za a -mx9 tmp.zip *
 cd ..
 rm *.zip
-cp -fp tmp/tmp.zip Android13-$(grep "# Linux/" out/.config | cut -d " " -f 3)-v$(date +%Y%m%d-%H).zip
+cp -fp tmp/tmp.zip Android12-$(grep "# Linux/" out/.config | cut -d " " -f 3)-v$(date +%Y%m%d-%H).zip
 rm -rf tmp
